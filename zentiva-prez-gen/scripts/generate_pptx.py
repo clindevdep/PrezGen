@@ -15,28 +15,33 @@ def get_layout_by_name(prs, name):
     return prs.slide_layouts[1]
 
 def remove_all_slides(prs):
-    """Removes all slides from the presentation object in a way that avoids XML corruption."""
+    """Removes all slides from the presentation object."""
     rIds = [prs.slides._sldIdLst[i].rId for i in range(len(prs.slides))]
     for rId in rIds:
         prs.part.drop_rel(rId)
     prs.slides._sldIdLst.clear()
 
 def fill_text_frame(tf, content):
-    """Fills a text frame with text or hierarchical bullets."""
+    """Fills a text frame with text or hierarchical bullets, ensuring placeholder text is replaced."""
     if isinstance(content, str):
+        # Directly setting .text on the placeholder is the most reliable way to clear 'Click here' text
         tf.text = content
     elif isinstance(content, list):
-        tf.clear() # Clear the default paragraph
-        for item in content:
+        # To avoid ghost text, we set the text of the first paragraph first
+        if not content:
+            return
+            
+        # Clear existing and start fresh
+        tf.clear()
+        
+        for i, item in enumerate(content):
+            p = tf.add_paragraph()
             if isinstance(item, str):
-                p = tf.add_paragraph()
                 p.text = item
                 p.level = 0
             elif isinstance(item, (list, tuple)) and len(item) >= 2:
-                text, level = item[0], item[1]
-                p = tf.add_paragraph()
-                p.text = text
-                p.level = level
+                p.text = item[0]
+                p.level = item[1]
 
 def create_presentation(title, slides_content, output_path, template_path=None):
     if template_path and os.path.exists(template_path):
@@ -51,8 +56,8 @@ def create_presentation(title, slides_content, output_path, template_path=None):
     for shape in slide.placeholders:
         if shape.placeholder_format.idx == 0:
             shape.text = title
-        if shape.placeholder_format.idx == 1:
-            shape.text = "Strategic Market Insights v004"
+        elif shape.placeholder_format.idx == 1:
+            shape.text = "Strategic Market Insights v005"
 
     # Content Slides
     for slide_data in slides_content:
@@ -64,6 +69,8 @@ def create_presentation(title, slides_content, output_path, template_path=None):
             slide.shapes.title.text = slide_data['title']
         
         for shape in slide.placeholders:
+            if not shape.has_text_frame:
+                continue
             ph = shape.placeholder_format
             if ph.idx == 14 and 'content' in slide_data:
                 fill_text_frame(shape.text_frame, slide_data['content'])
@@ -72,8 +79,6 @@ def create_presentation(title, slides_content, output_path, template_path=None):
             elif ph.type == 18 and 'image' in slide_data: # PICTURE
                 if os.path.exists(slide_data['image']):
                     shape.insert_picture(slide_data['image'])
-                else:
-                    print(f"Warning: Image {slide_data['image']} not found.")
 
     prs.save(output_path)
     print(f"Presentation saved to {output_path}")
@@ -89,7 +94,6 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     assets_dir = os.path.join(script_dir, "..", "assets")
     
-    # Structure for v004 with hierarchical bullets
     slides = [
         {
             "title": "Market Overview & Growth",
@@ -119,5 +123,4 @@ if __name__ == "__main__":
     ]
     
     template = os.path.join(assets_dir, "Brand_v001.pptx")
-    
     create_presentation(title, slides, output_path, template if os.path.exists(template) else None)

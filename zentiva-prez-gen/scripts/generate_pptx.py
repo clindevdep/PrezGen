@@ -23,10 +23,8 @@ def remove_all_slides(prs):
 
 def fill_text_frame(shape, content):
     """Fills a shape's text frame, ensuring the placeholder text is completely replaced."""
-    # To truly remove "Click to add text", we must use shape.text_frame.text = "" first
-    # Or use shape.text = content for simple text.
     tf = shape.text_frame
-    tf.text = "" # This clears the placeholder ghost text
+    tf.text = "" # Clear ghost text
     
     if isinstance(content, str):
         tf.paragraphs[0].text = content
@@ -54,7 +52,7 @@ def create_presentation(title, slides_content, output_path, template_path=None, 
     else:
         prs = Presentation()
 
-    # FrontPage - Index 12: 3_Title Slide (Has Picture placeholder at idx 13)
+    # Title Slide
     title_layout = get_layout_by_name(prs, "3_Title Slide")
     slide = prs.slides.add_slide(title_layout)
     
@@ -63,7 +61,7 @@ def create_presentation(title, slides_content, output_path, template_path=None, 
         if ph.type == 3: # CENTER_TITLE
             shape.text = title
         elif ph.type == 4: # SUBTITLE
-            shape.text = "Strategic Market Insights v007"
+            shape.text = "Strategic Market Insights v008"
         elif ph.idx == 13 and brand_image and os.path.exists(brand_image):
             shape.insert_picture(brand_image)
 
@@ -76,16 +74,29 @@ def create_presentation(title, slides_content, output_path, template_path=None, 
         if slide.shapes.title:
             slide.shapes.title.text = slide_data['title']
         
+        # We need to be very careful: many placeholders (idx 13, 14, 15) might exist
+        # We only want to fill ONE for 'content' and ONE for 'content2'
+        filled_indices = set()
+        
+        # First, clear EVERYTHING that has a text frame to remove "Click to add text"
         for shape in slide.placeholders:
-            if not shape.has_text_frame:
-                continue
+            if shape.has_text_frame:
+                shape.text_frame.text = ""
+
+        # Now fill only the specific ones we want
+        for shape in slide.placeholders:
             ph = shape.placeholder_format
-            # Map index 13, 14, 15 which often contain the "Click to add text" ghost
-            if ph.idx in [13, 14, 15]:
-                key = 'content' if ph.idx in [13, 14] else 'content2'
-                if key in slide_data:
-                    fill_text_frame(shape, slide_data[key])
-            elif ph.type == 18 and 'image' in slide_data: # PICTURE
+            
+            # Standard single column content layout usually uses idx 14 for body
+            if ph.idx == 14 and 'content' in slide_data and 14 not in filled_indices:
+                fill_text_frame(shape, slide_data['content'])
+                filled_indices.add(14)
+            # Two column content usually uses 14 and 15
+            elif ph.idx == 15 and 'content2' in slide_data and 15 not in filled_indices:
+                fill_text_frame(shape, slide_data['content2'])
+                filled_indices.add(15)
+            # Layout with picture
+            elif ph.type == 18 and 'image' in slide_data:
                 if os.path.exists(slide_data['image']):
                     shape.insert_picture(slide_data['image'])
 
@@ -102,15 +113,7 @@ if __name__ == "__main__":
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     assets_dir = os.path.join(script_dir, "..", "assets")
-    
-    # Try to find a nice background image for the title
-    # I'll use the existing template pdf's first page if I can convert it or just a placeholder
     title_bg = os.path.join(assets_dir, "title_bg.png")
-    if not os.path.exists(title_bg):
-        # Create a placeholder if it doesn't exist
-        from PIL import Image
-        img = Image.new('RGB', (1920, 1080), color=(0, 75, 121)) # Zentiva Blue
-        img.save(title_bg)
 
     slides = [
         {

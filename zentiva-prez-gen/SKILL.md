@@ -1,6 +1,6 @@
 ---
 name: zentiva-prez-gen
-version: v018
+version: v019
 description: |
   Generate Zentiva-branded PowerPoint presentations from markdown templates.
   Uses the official Brand_v001.pptx template to preserve gradients, logos, and visual elements.
@@ -11,7 +11,7 @@ description: |
   - Any request for Zentiva-branded presentations or slide decks
 ---
 
-# Zentiva Presentation Generator (v018)
+# Zentiva Presentation Generator (v019)
 
 This skill enables you to create branded Zentiva presentations programmatically using Python and the `python-pptx` library.
 
@@ -80,6 +80,26 @@ Left gradient panel with text, right side image.
 {'type': 'split', 'title': 'Section Title', 'subtitle': 'Description'}
 ```
 
+### 6. Highlight Content Slide (`type: 'highlight'`) - NEW in v019
+Content slide with inline text highlighting. Key phrases are emphasized in teal color.
+Use `<<text>>` syntax to mark portions that should be highlighted.
+
+```python
+{'type': 'highlight', 'title': 'Key Benefits', 'content': [
+    '<<Primary advantage>> with supporting explanation',
+    ('Detail with <<emphasis>> in the middle', 1),
+    'Another point with <<multiple>> inline <<highlights>>',
+    ('Sub-point containing <<key data>> and context', 1)
+]}
+```
+
+**Highlight syntax:**
+- Wrap text in `<<` and `>>` to highlight in teal
+- Works at any bullet level
+- Multiple highlights per line supported
+- Level 0: Bold dark blue with teal highlights
+- Level 1+: Regular dark blue with teal highlights
+
 ## Bullet Point Hierarchy
 
 Content supports nested bullets using tuples:
@@ -107,7 +127,7 @@ Generate a complete presentation from a list of slide specifications.
 **Slide Dictionary Keys:**
 | Key | Type | Description |
 |-----|------|-------------|
-| `type` | str | 'title', 'quote', 'content', 'two_column', 'split' |
+| `type` | str | 'title', 'quote', 'content', 'two_column', 'split', 'highlight' |
 | `title` | str | Main title or statement text |
 | `subtitle` | str | Secondary text (title/split slides) |
 | `content` | list | Bullet points for left/main content |

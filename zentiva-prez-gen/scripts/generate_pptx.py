@@ -19,7 +19,7 @@ from lxml import etree
 # =============================================================================
 # VERSION
 # =============================================================================
-VERSION = "v018"
+VERSION = "v019"
 
 
 def get_versioned_filename(base_name, version=None):
@@ -46,6 +46,7 @@ LAYOUT_CONTENT = "2_Title and Content"
 LAYOUT_TWO_COLUMN = "17_Title and Content"
 LAYOUT_SPLIT = "3_Title Slide"
 LAYOUT_TEXT_IMAGE = "12_Title and Content"  # Title, subtitle, text left, image right
+LAYOUT_HIGHLIGHT = "25_Title and Content"  # For highlight content slides with inline emphasis
 
 
 def get_layout_by_name(prs, name):
@@ -709,6 +710,146 @@ def add_text_image_slide(prs, title, subtitle, content, image_path=None):
     return slide
 
 
+def parse_highlight_text(text):
+    """
+    Parse text with <<highlight>> markers into segments.
+
+    Args:
+        text: String with <<highlighted>> portions marked
+
+    Returns:
+        List of (text, is_highlighted) tuples
+
+    Example:
+        "Normal <<highlighted>> normal" ->
+        [("Normal ", False), ("highlighted", True), (" normal", False)]
+
+        "Value is <<>50 million>> here" ->
+        [("Value is ", False), (">50 million", True), (" here", False)]
+    """
+    import re
+    segments = []
+    # Use non-greedy match to handle > inside highlighted text
+    # Match << followed by any chars (non-greedy) followed by >>
+    pattern = r'<<(.+?)>>'
+
+    last_end = 0
+    for match in re.finditer(pattern, text):
+        # Add normal text before the match
+        if match.start() > last_end:
+            segments.append((text[last_end:match.start()], False))
+        # Add highlighted text
+        segments.append((match.group(1), True))
+        last_end = match.end()
+
+    # Add remaining normal text
+    if last_end < len(text):
+        segments.append((text[last_end:], False))
+
+    # If no highlights found, return whole text as normal
+    if not segments:
+        segments = [(text, False)]
+
+    return segments
+
+
+def add_highlight_slide(prs, title, content):
+    """
+    Add a slide with inline text highlighting (teal emphasis on key phrases).
+
+    This replicates the format from slide 16 of Brand_v002.pptx where specific
+    text segments within bullet points are highlighted in teal color.
+
+    Args:
+        prs: Presentation object
+        title: Slide title (dark blue)
+        content: List of bullet items. Each item can be:
+            - str: "Normal text with <<highlighted>> portions" (level 0)
+            - tuple: ("Text with <<highlights>>", level) where level is 0, 1, 2...
+
+        Use <<text>> syntax to mark portions that should be highlighted in teal.
+
+    Returns:
+        The created slide
+
+    Example:
+        content = [
+            "<<Key point>> with additional context",
+            ("Supporting detail with <<emphasis>>", 1),
+            "Another point <<highlighted phrase>> continues here"
+        ]
+    """
+    # Try to get the highlight layout, fall back to content layout
+    layout = get_layout_by_name(prs, LAYOUT_HIGHLIGHT)
+    if layout is None or layout.name != LAYOUT_HIGHLIGHT:
+        layout = get_layout_by_name(prs, LAYOUT_CONTENT)
+
+    slide = prs.slides.add_slide(layout)
+
+    # Keep only title placeholder, remove others
+    hide_unused_placeholders(slide, keep_indices=[0])
+
+    # Set title
+    if slide.shapes.title:
+        slide.shapes.title.text = title
+
+    # Create textbox for content (not using placeholder for better control)
+    # Position similar to template: below title with margins
+    textbox = slide.shapes.add_textbox(
+        Inches(0.6), Inches(1.4), Inches(12.0), Inches(5.5)
+    )
+    tf = textbox.text_frame
+    tf.word_wrap = True
+
+    for i, item in enumerate(content):
+        # Parse item
+        if isinstance(item, str):
+            text = item
+            level = 0
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            text = item[0]
+            level = item[1]
+        else:
+            text = str(item)
+            level = 0
+
+        # Get or create paragraph
+        if i == 0:
+            p = tf.paragraphs[0]
+        else:
+            p = tf.add_paragraph()
+
+        p.level = level
+
+        # Parse highlight segments
+        segments = parse_highlight_text(text)
+
+        # Determine styling based on level
+        is_level_0 = level == 0
+        base_font_size = Pt(18) if is_level_0 else Pt(16)
+        is_bold = is_level_0
+
+        # Clear any default text and add runs for each segment
+        p.clear()
+
+        for seg_text, is_highlighted in segments:
+            run = p.add_run()
+            run.text = seg_text
+            run.font.size = base_font_size
+            run.font.bold = is_bold
+
+            if is_highlighted:
+                run.font.color.rgb = ZENTIVA_TEAL  # Highlighted = teal
+            else:
+                run.font.color.rgb = ZENTIVA_DARK_BLUE  # Normal = dark blue
+
+        # Set bullet formatting
+        bullet_color = ZENTIVA_DARK_BLUE if is_level_0 else ZENTIVA_TEAL
+        set_bullet_format(p, "•", bullet_color)
+
+    return slide
+
+
 def move_slide_to_end(prs, slide_index):
     """
     Move a slide to the end of the presentation.
@@ -903,6 +1044,9 @@ def generate_presentation(output_path, template_path, slides_spec):
             add_two_column_slide(prs, spec.get('title', ''),
                                spec.get('content', []), spec.get('content2', []))
 
+        elif slide_type == 'highlight':
+            add_highlight_slide(prs, spec.get('title', ''), spec.get('content', []))
+
         elif slide_type == 'split':
             # Modify template slide 2 (split layout)
             if 2 not in slides_to_keep:
@@ -974,6 +1118,18 @@ def generate_test_presentation(output_path, template_path):
         image_path=title_bg if os.path.exists(title_bg) else None
     )
 
+    # Add highlight slide (new in v019)
+    highlight_slide = add_highlight_slide(prs,
+        title="Highlight Slide Test",
+        content=[
+            "<<Key benefit>> with supporting explanation text",
+            ("Detail point with <<inline emphasis>> in the middle", 1),
+            "Another <<important point>> that drives the message",
+            ("CPRD contains <<>50 million patients>> and covers ~24%", 1),
+            "<<Multiple highlights>> can appear <<in one line>>",
+        ]
+    )
+
     # Add conclusion slide
     conclusion_slide = add_conclusion_slide(prs,
         title="Conclusions",
@@ -983,6 +1139,7 @@ def generate_test_presentation(output_path, template_path):
             "Multiple slide layouts are supported",
             "Hierarchical bullet points with color styling",
             "Text and image layouts available",
+            "Highlight slides with inline emphasis (v019)",
             "Slide management (hide, reorder) implemented"
         ]
     )
@@ -993,21 +1150,21 @@ def generate_test_presentation(output_path, template_path):
         remove_slide(prs, i)
 
     # Now reorder: Move Quote (1) and Split (2) to the end and hide them
-    # After removals: 0=Title, 1=Quote, 2=Split, 3=Content, 4=TwoCol, 5=TextImage, 6=Conclusion
+    # After removals: 0=Title, 1=Quote, 2=Split, 3=Content, 4=TwoCol, 5=TextImage, 6=Highlight, 7=Conclusion
     # Move Quote (index 1) to end
     move_slide_to_end(prs, 1)
-    # Now: 0=Title, 1=Split, 2=Content, 3=TwoCol, 4=TextImage, 5=Conclusion, 6=Quote
+    # Now: 0=Title, 1=Split, 2=Content, 3=TwoCol, 4=TextImage, 5=Highlight, 6=Conclusion, 7=Quote
     # Move Split (now index 1) to end
     move_slide_to_end(prs, 1)
-    # Now: 0=Title, 1=Content, 2=TwoCol, 3=TextImage, 4=Conclusion, 5=Quote, 6=Split
+    # Now: 0=Title, 1=Content, 2=TwoCol, 3=TextImage, 4=Highlight, 5=Conclusion, 6=Quote, 7=Split
 
     # Hide the last two slides (Quote and Split)
     hide_slide(prs, len(prs.slides) - 2)  # Quote
     hide_slide(prs, len(prs.slides) - 1)  # Split
 
     # Add slide numbers to all visible slides except title (index 0)
-    # Visible slides: 0=Title, 1=Content, 2=TwoCol, 3=TextImage, 4=Conclusion
-    # Hidden slides at end: 5=Quote, 6=Split
+    # Visible slides: 0=Title, 1=Content, 2=TwoCol, 3=TextImage, 4=Highlight, 5=Conclusion
+    # Hidden slides at end: 6=Quote, 7=Split
     visible_count = len(prs.slides) - 2  # Exclude 2 hidden slides
     total_numbered = visible_count - 1   # Exclude title slide from numbering
     for i in range(1, visible_count):    # Skip title (0), stop before hidden

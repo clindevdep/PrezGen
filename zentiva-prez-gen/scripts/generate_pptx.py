@@ -19,7 +19,7 @@ from lxml import etree
 # =============================================================================
 # VERSION
 # =============================================================================
-VERSION = "v019"
+VERSION = "v020"
 
 
 def get_versioned_filename(base_name, version=None):
@@ -33,9 +33,18 @@ def get_versioned_filename(base_name, version=None):
 # =============================================================================
 # ZENTIVA BRAND COLORS
 # =============================================================================
-ZENTIVA_DARK_BLUE = RGBColor(12, 65, 96)      # #0C4160
-ZENTIVA_TEAL = RGBColor(0, 169, 143)          # #00A98F
-ZENTIVA_LIGHT_TEAL = RGBColor(232, 245, 242)  # #E8F5F2
+# v020: the theme of Brand_v002.pptx (accent1 / accent2 and the master's bullet colour); v019 used
+# #0C4160 / #00A98F, which are not in the template.
+ZENTIVA_DARK_BLUE = RGBColor(0x00, 0x48, 0x76)     # #004876 theme accent1 (titles, body text)
+ZENTIVA_TEAL = RGBColor(0x00, 0xBD, 0x8E)          # #00BD8E theme accent2 (subtitles, emphasis)
+ZENTIVA_BULLET_GREEN = RGBColor(0x3E, 0xC8, 0x9F)  # #3EC89F master bullet colour
+ZENTIVA_LIGHT_TEAL = RGBColor(232, 245, 242)       # #E8F5F2 light rows / panels
+ZENTIVA_GREY = RGBColor(0x32, 0x32, 0x32)          # #323232 theme dk1 (footnotes)
+
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+DEFAULT_TEMPLATE = os.path.join(ASSETS_DIR, "Brand_v002.pptx")
+# table style of the template's table slide (slide 11): Medium Style 2 - Accent 2, header in accent1
+TABLE_STYLE_ID = "{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}"
 
 # =============================================================================
 # LAYOUT NAMES
@@ -188,7 +197,7 @@ def fill_text_frame(shape, content, bullets=False, bullet_color=None,
                 text = str(item)
                 level = 0
 
-            p.text = text
+            add_rich_text(p, text)
             p.level = level
 
             # Apply level-specific styling
@@ -199,7 +208,7 @@ def fill_text_frame(shape, content, bullets=False, bullet_color=None,
                     if 'font_size' in style:
                         run.font.size = style['font_size']
                     if 'font_color' in style:
-                        run.font.color.rgb = style['font_color']
+                        color_run(run, style['font_color'])
                 # Get bullet color for this level
                 b_color = style.get('bullet_color', default_bullet_color)
             else:
@@ -238,16 +247,16 @@ def add_textbox_with_bullets(slide, left, top, width, height, content,
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
 
         if isinstance(item, str):
-            p.text = item
+            add_rich_text(p, item)
             p.level = 0
         elif isinstance(item, (list, tuple)) and len(item) >= 2:
-            p.text = item[0]
+            add_rich_text(p, item[0])
             p.level = item[1]
 
         # Set font formatting
         for run in p.runs:
             run.font.size = font_size
-            run.font.color.rgb = font_color
+            color_run(run, font_color)
 
         # Set explicit bullet
         set_bullet_format(p, "•", bullet_color)
@@ -296,7 +305,7 @@ def modify_title_slide(slide, title, subtitle=None, bg_image=None, date_str=None
         # Slide is 13.33" wide x 7.5" tall
         # Position: bottom right, above the footer (footer starts ~7.0")
         date_box = slide.shapes.add_textbox(
-            Inches(9.0), Inches(6.2), Inches(4.0), Inches(0.5)
+            Inches(9.0), Inches(5.7), Inches(4.0), Inches(0.5)  # v020: inside the photo (ends at 6.41")
         )
         tf = date_box.text_frame
         p = tf.paragraphs[0]
@@ -486,7 +495,7 @@ def fill_text_frame_with_subtitle(shape, content, subtitle=None, level_styles=No
             text = str(item)
             level = 0
 
-        p.text = text
+        add_rich_text(p, text)
         p.level = level
 
         # Apply level-specific styling
@@ -496,7 +505,7 @@ def fill_text_frame_with_subtitle(shape, content, subtitle=None, level_styles=No
                 if 'font_size' in style:
                     run.font.size = style['font_size']
                 if 'font_color' in style:
-                    run.font.color.rgb = style['font_color']
+                    color_run(run, style['font_color'])
             b_color = style.get('bullet_color', ZENTIVA_TEAL)
         else:
             b_color = ZENTIVA_TEAL
@@ -553,7 +562,7 @@ def add_textbox_with_subtitle_and_bullets(slide, left, top, width, height, conte
             text = str(item)
             level = 0
 
-        p.text = text
+        add_rich_text(p, text)
         p.level = level
 
         # Get style for this level
@@ -567,7 +576,7 @@ def add_textbox_with_subtitle_and_bullets(slide, left, top, width, height, conte
             if 'font_size' in style:
                 run.font.size = style['font_size']
             if 'font_color' in style:
-                run.font.color.rgb = style['font_color']
+                color_run(run, style['font_color'])
 
         # Set bullet
         b_color = style.get('bullet_color', ZENTIVA_TEAL)
@@ -704,7 +713,7 @@ def add_text_image_slide(prs, title, subtitle, content, image_path=None):
         # Picture placeholder (idx=15)
         elif ph.idx == 15 and image_path and os.path.exists(image_path):
             # Check if it's a SlidePlaceholder that can accept an image
-            if shape.__class__.__name__ == 'SlidePlaceholder':
+            if hasattr(shape, 'insert_picture'):  # PicturePlaceholder (v019 checked a class name that never matched)
                 shape.insert_picture(image_path)
 
     return slide
@@ -751,6 +760,48 @@ def parse_highlight_text(text):
         segments = [(text, False)]
 
     return segments
+
+
+import re as _re
+
+_RICH = _re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)|\*\*(.+?)\*\*|<<(.+?)>>")
+_HIGHLIGHT_RUNS: set[int] = set()  # id() of <a:r> elements that carry the teal highlight
+
+
+def add_rich_text(paragraph, text, highlight_color=None):
+    """Add runs for `text` to `paragraph`: [label](url) → hyperlink (underlined), **bold**, <<highlight>>
+    (teal). Returns the runs. Later colour loops skip highlighted runs (see `color_run`)."""
+    runs, last = [], 0
+    for m in _RICH.finditer(text or ""):
+        if m.start() > last:
+            r = paragraph.add_run()
+            r.text = text[last:m.start()]
+            runs.append(r)
+        r = paragraph.add_run()
+        if m.group(1):
+            r.text = m.group(1)
+            r.hyperlink.address = m.group(2)
+            r.font.underline = True
+        elif m.group(3):
+            r.text = m.group(3)
+            r.font.bold = True
+        else:
+            r.text = m.group(4)
+            r.font.color.rgb = highlight_color or ZENTIVA_TEAL
+            _HIGHLIGHT_RUNS.add(id(r._r))
+        runs.append(r)
+        last = m.end()
+    if last < len(text or ""):
+        r = paragraph.add_run()
+        r.text = text[last:]
+        runs.append(r)
+    return runs
+
+
+def color_run(run, color):
+    """Set a run colour unless the run is a <<highlight>>."""
+    if id(run._r) not in _HIGHLIGHT_RUNS:
+        run.font.color.rgb = color
 
 
 def add_highlight_slide(prs, title, content):
@@ -821,8 +872,6 @@ def add_highlight_slide(prs, title, content):
 
         p.level = level
 
-        # Parse highlight segments
-        segments = parse_highlight_text(text)
 
         # Determine styling based on level
         is_level_0 = level == 0
@@ -832,16 +881,11 @@ def add_highlight_slide(prs, title, content):
         # Clear any default text and add runs for each segment
         p.clear()
 
-        for seg_text, is_highlighted in segments:
-            run = p.add_run()
-            run.text = seg_text
+        for run in add_rich_text(p, text):
             run.font.size = base_font_size
-            run.font.bold = is_bold
-
-            if is_highlighted:
-                run.font.color.rgb = ZENTIVA_TEAL  # Highlighted = teal
-            else:
-                run.font.color.rgb = ZENTIVA_DARK_BLUE  # Normal = dark blue
+            if is_bold:
+                run.font.bold = True
+            color_run(run, ZENTIVA_DARK_BLUE)  # highlights stay teal
 
         # Set bullet formatting
         bullet_color = ZENTIVA_DARK_BLUE if is_level_0 else ZENTIVA_TEAL
@@ -989,209 +1033,244 @@ def get_current_date_formatted():
 
 
 # =============================================================================
+# TABLES AND SOURCES (v020)
+# =============================================================================
+
+def _set_cell(cell, text, size, color, bold=False, fill=None, align=PP_ALIGN.LEFT):
+    cell.text = ""
+    p = cell.text_frame.paragraphs[0]
+    p.alignment = align
+    for run in add_rich_text(p, str(text) if text is not None else ""):
+        run.font.size = size
+        if bold:
+            run.font.bold = True
+        color_run(run, color)
+    cell.margin_left = cell.margin_right = Inches(0.06)
+    cell.margin_top = cell.margin_bottom = Inches(0.03)
+    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+    if fill is not None:
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = fill
+
+
+def add_table_slide(prs, title, header, rows, subtitle=None, col_widths=None, max_rows=12, font_size=None):
+    """Table in the style of the template's table slide (slide 11): accent1 header with white bold text,
+    banded light-green rows (Medium Style 2 - Accent 2). Long tables continue on '(cont.)' slides.
+    Cell text supports [label](url), **bold** and <<highlight>>. Returns the list of slides."""
+    slides = []
+    chunks = [rows[i:i + max_rows] for i in range(0, len(rows), max_rows)] or [[]]
+    for n, chunk in enumerate(chunks):
+        layout = get_layout_by_name(prs, LAYOUT_CONTENT)
+        slide = prs.slides.add_slide(layout)
+        if slide.shapes.title:
+            slide.shapes.title.text = title + (" (cont.)" if n else "")
+        keep = [0, 14] if subtitle else [0]
+        hide_unused_placeholders(slide, keep_indices=keep)
+        if subtitle:
+            for shape in slide.placeholders:
+                if shape.placeholder_format.idx == 14:
+                    shape.text = subtitle
+        ncols = len(header)
+        top = Inches(1.55)
+        height = Inches(0.42) * (len(chunk) + 1)
+        shape = slide.shapes.add_table(len(chunk) + 1, ncols, Inches(0.5), top, Inches(12.0), height)
+        tbl = shape.table
+        tblPr = tbl._tbl.tblPr
+        tblPr.set("firstRow", "1")
+        tblPr.set("bandRow", "1")
+        style = tblPr.find(qn("a:tableStyleId"))
+        if style is None:
+            style = etree.SubElement(tblPr, qn("a:tableStyleId"))
+        style.text = TABLE_STYLE_ID
+        if col_widths:
+            total = sum(col_widths)
+            for c, w in enumerate(col_widths):
+                tbl.columns[c].width = int(Inches(12.0) * w / total)
+        size = font_size or (Pt(14) if len(chunk) <= 6 else Pt(12) if len(chunk) <= 9 else Pt(11))
+        for c, h in enumerate(header):
+            _set_cell(tbl.cell(0, c), h, size, RGBColor(0xFF, 0xFF, 0xFF), bold=True, fill=ZENTIVA_DARK_BLUE,
+                      align=PP_ALIGN.CENTER)
+        for r, row in enumerate(chunk, start=1):
+            for c in range(ncols):
+                value = row[c] if c < len(row) else ""
+                _set_cell(tbl.cell(r, c), value, size, ZENTIVA_DARK_BLUE,
+                          align=PP_ALIGN.LEFT if c == 0 else PP_ALIGN.CENTER)
+        slides.append(slide)
+    return slides
+
+
+def add_sources(slide, sources, label="Sources: "):
+    """Small footnote line above the footer with the slide's sources. Items: '[label](url)', plain text,
+    or (label, url) tuples. Like the template's footnote text box (slide 11)."""
+    items = []
+    for src in sources:
+        if isinstance(src, (list, tuple)) and len(src) >= 2:
+            items.append(f"[{src[0]}]({src[1]})" if src[1] else str(src[0]))
+        else:
+            items.append(str(src))
+    box = slide.shapes.add_textbox(Inches(0.5), Inches(6.38), Inches(12.0), Inches(0.36))
+    tf = box.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    for run in add_rich_text(p, label + "; ".join(items)):
+        run.font.size = Pt(8)
+        color_run(run, ZENTIVA_GREY)
+    return box
+
+
+# =============================================================================
 # MAIN GENERATION
 # =============================================================================
 
-def generate_presentation(output_path, template_path, slides_spec):
-    """
-    Generate a presentation by modifying template slides.
+def _sld_id_of(prs, slide):
+    for sld_id in prs.slides._sldIdLst:
+        if prs.part.related_part(sld_id.rId) is slide.part:
+            return sld_id
+    raise ValueError("slide not in presentation")
 
-    Args:
-        output_path: Path to save the presentation
-        template_path: Path to Brand_v001.pptx template
-        slides_spec: List of slide specifications, each with:
-            - 'type': 'title', 'quote', 'content', 'two_column', 'split'
-            - 'title': Slide title/statement
-            - 'subtitle': Optional subtitle
-            - 'content': Bullets list
-            - 'content2': Second column content
-            - 'image': Image path
+
+def generate_presentation(output_path, template_path=None, slides_spec=(), slide_numbers=True):
     """
+    Generate a presentation from slide specifications (v020).
+
+    Template slides are reused for 'title' (template slide 1), the first 'quote' (slide 2) and the first
+    'split' (slide 3); every other slide is added from a layout. The deck follows the order of
+    `slides_spec`; all unused template slides are removed (Brand_v002 has 16).
+
+    Each spec: 'type' (title | quote | split | content | two_column | highlight | text_image | conclusion |
+    table), 'title', optional 'subtitle', 'content' (bullets: "text" or ["text", level]), 'content2',
+    'image', 'takeaways', 'header' + 'rows' (+ 'col_widths') for tables, 'sources' (list, footnote line),
+    'hidden' (bool). Text supports [label](url), **bold** and <<highlight>>.
+    """
+    template_path = template_path or DEFAULT_TEMPLATE
     prs = Presentation(template_path)
+    originals = list(prs.slides._sldIdLst)
+    reused, order = set(), []
 
-    # Template has 14 slides. We'll modify the ones we need and remove the rest.
-    # Slide indices (0-based):
-    # 0: Title slide (1_Title Slide) - has dark bg
-    # 1: Quote slide (1_Title Slide) - has gradient shape
-    # 2-5: Split layouts
-    # 6+: Various content layouts
+    for spec in slides_spec:
+        t = spec.get("type", "content")
+        title = spec.get("title", "")
+        made = []
+        if t == "title" and 0 not in reused:
+            modify_title_slide(prs.slides[0], title, spec.get("subtitle"), spec.get("image"),
+                               date_str=spec.get("date") or get_current_date_formatted())
+            reused.add(0)
+            made = [prs.slides[0]]
+        elif t == "quote" and 1 not in reused:
+            modify_quote_slide(prs.slides[1], title)
+            reused.add(1)
+            made = [prs.slides[1]]
+        elif t == "split" and 2 not in reused:
+            modify_split_slide(prs.slides[2], title, spec.get("subtitle"), spec.get("image"))
+            reused.add(2)
+            made = [prs.slides[2]]
+        elif t in ("content", "quote", "title", "split"):
+            made = [add_content_slide(prs, title, spec.get("content", []), subtitle=spec.get("subtitle"))]
+        elif t == "two_column":
+            made = [add_two_column_slide(prs, title, spec.get("content", []), spec.get("content2", []))]
+        elif t == "highlight":
+            made = [add_highlight_slide(prs, title, spec.get("content", []))]
+        elif t == "text_image":
+            made = [add_text_image_slide(prs, title, spec.get("subtitle"), spec.get("content", []),
+                                         spec.get("image"))]
+        elif t == "conclusion":
+            made = [add_conclusion_slide(prs, title or "Conclusions", spec.get("subtitle"), spec.get("takeaways"))]
+        elif t == "table":
+            made = add_table_slide(prs, title, spec.get("header", []), spec.get("rows", []),
+                                   subtitle=spec.get("subtitle"), col_widths=spec.get("col_widths"),
+                                   max_rows=spec.get("max_rows", 12))
+        else:
+            raise ValueError(f"unknown slide type: {t}")
+        for slide in made:
+            if spec.get("sources"):
+                add_sources(slide, spec["sources"])
+            if spec.get("hidden"):
+                slide._element.set("show", "0")
+            order.append(_sld_id_of(prs, slide))
 
-    # Process each slide spec
-    slides_to_keep = []
+    # drop unused template slides, then put the slides in spec order
+    lst = prs.slides._sldIdLst
+    for idx, sld_id in enumerate(originals):
+        if idx not in reused:
+            prs.part.drop_rel(sld_id.rId)
+            lst.remove(sld_id)
+    for sld_id in order:
+        lst.remove(sld_id)
+        lst.append(sld_id)
 
-    for i, spec in enumerate(slides_spec):
-        slide_type = spec.get('type', 'content')
-
-        if slide_type == 'title' and i == 0:
-            # Modify template slide 0
-            modify_title_slide(prs.slides[0], spec.get('title', ''),
-                             spec.get('subtitle'), spec.get('image'))
-            slides_to_keep.append(0)
-
-        elif slide_type == 'quote':
-            # Modify template slide 1 (has gradient)
-            if 1 not in slides_to_keep:
-                modify_quote_slide(prs.slides[1], spec.get('title', ''))
-                slides_to_keep.append(1)
-            else:
-                # Need to add additional quote slide
-                add_content_slide(prs, spec.get('title', ''), [])
-
-        elif slide_type == 'content':
-            add_content_slide(prs, spec.get('title', ''), spec.get('content', []))
-
-        elif slide_type == 'two_column':
-            add_two_column_slide(prs, spec.get('title', ''),
-                               spec.get('content', []), spec.get('content2', []))
-
-        elif slide_type == 'highlight':
-            add_highlight_slide(prs, spec.get('title', ''), spec.get('content', []))
-
-        elif slide_type == 'split':
-            # Modify template slide 2 (split layout)
-            if 2 not in slides_to_keep:
-                modify_split_slide(prs.slides[2], spec.get('title'),
-                                 spec.get('subtitle'), spec.get('image'))
-                slides_to_keep.append(2)
-
-    # Remove unused template slides (in reverse order to maintain indices)
-    for i in range(len(prs.slides) - 1, -1, -1):
-        # Keep slides we modified and any slides we added (which are at end)
-        if i not in slides_to_keep and i < 14:  # 14 is original template count
-            remove_slide(prs, i)
+    if slide_numbers:
+        visible = [s for s in prs.slides if s._element.get("show") != "0"]
+        numbered = visible[1:]  # not on the title slide
+        for n, slide in enumerate(numbered, start=1):
+            add_slide_number(slide, n, len(numbered))
 
     prs.save(output_path)
     print(f"[zentiva-prez-gen {VERSION}] Presentation saved to {output_path}")
     return output_path
 
 
-def generate_test_presentation(output_path, template_path):
+TEST_SPEC = [
+    {"type": "title", "title": "Test Presentation", "subtitle": "Verification of All Layouts"},
+    {"type": "content", "title": "Content Slide Test", "subtitle": "Green subtitle for the content slide",
+     "content": ["First level bullet point", ["Second level indented", 1], ["Another second level", 1],
+                 "Back to first level with a [link](https://www.zentiva.com)", ["Nested **bold** point", 1]],
+     "sources": ["[EMA EPAR](https://www.ema.europa.eu)", "internal data"]},
+    {"type": "two_column", "title": "Two Column Layout Test",
+     "content": ["Left column point 1", "Left column point 2"], "content2": ["Right column point 1", "Right 2"]},
+    {"type": "table", "title": "Table Slide Test", "subtitle": "Template slide 11 style",
+     "header": ["Parameter", "Value", "Source"],
+     "rows": [["Cmax CVw", "14.2%", "[EPAR](https://www.ema.europa.eu)"], ["AUC CVw", "12.3%", "FDA review"],
+              ["BCS class", "<<II>>", "EPAR + FDA"]], "col_widths": [3, 2, 4]},
+    {"type": "highlight", "title": "Highlight Slide Test",
+     "content": ["<<Key benefit>> with supporting explanation", ["Detail with <<inline emphasis>>", 1]]},
+    {"type": "quote", "title": "A statement on the gradient slide, placed where the spec puts it"},
+    {"type": "text_image", "title": "Text and Image Layout", "subtitle": "Content left, image right",
+     "content": ["Key feature one", ["Detail", 1]], "image": os.path.join(ASSETS_DIR, "title_bg.png")},
+    {"type": "conclusion", "title": "Conclusions", "subtitle": "Summary",
+     "takeaways": ["Brand_v002 theme colours", "Slides in spec order", "Tables and sources"]},
+]
+
+
+def generate_test_presentation(output_path, template_path=None):
     """Generate a test presentation showcasing all layout types."""
-    prs = Presentation(template_path)
+    return generate_presentation(output_path, template_path, TEST_SPEC)
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    assets_dir = os.path.join(script_dir, "..", "assets")
-    title_bg = os.path.join(assets_dir, "title_bg.png")
 
-    # Modify slide 0 (Title) with date
-    modify_title_slide(prs.slides[0], "Test Presentation",
-                       "Verification of All Layouts",
-                       title_bg if os.path.exists(title_bg) else None,
-                       date_str=get_current_date_formatted())
+def load_markdown_spec(path):
+    """Slides from a markdown file of ```yaml blocks (Templates/presentation_template_v020.md): the block with
+    'output' (or no 'type') is metadata; every block with 'type' is a slide, in file order."""
+    import yaml
 
-    # Modify slide 1 (Quote with gradient) - will be moved to end and hidden
-    modify_quote_slide(prs.slides[1],
-                       "This is a test quote to verify the gradient background")
-
-    # Modify slide 2 (Split layout) - will be moved to end and hidden
-    modify_split_slide(prs.slides[2], "Split Layout Test", "With Right Image",
-                       title_bg if os.path.exists(title_bg) else None)
-
-    # Add content slide with subtitle and hierarchical styling
-    content_slide = add_content_slide(prs, "Content Slide Test",
-        bullets=[
-            "First level bullet point",
-            ("Second level indented", 1),
-            ("Another second level", 1),
-            "Back to first level",
-            ("Nested point", 1)
-        ],
-        subtitle="This is a green subtitle for the content slide"
-    )
-
-    # Add two-column slide
-    two_col_slide = add_two_column_slide(prs, "Two Column Layout Test",
-        ["Left column point 1", "Left column point 2", "Left column point 3"],
-        ["Right column point 1", "Right column point 2", "Right column point 3"])
-
-    # Add text+image slide (layout 12)
-    text_image_slide = add_text_image_slide(prs,
-        title="Text and Image Layout",
-        subtitle="Slide 12 style with content left and image right",
-        content=[
-            "Key feature one",
-            ("Detail about feature one", 1),
-            "Key feature two",
-            ("Detail about feature two", 1),
-            "Key feature three"
-        ],
-        image_path=title_bg if os.path.exists(title_bg) else None
-    )
-
-    # Add highlight slide (new in v019)
-    highlight_slide = add_highlight_slide(prs,
-        title="Highlight Slide Test",
-        content=[
-            "<<Key benefit>> with supporting explanation text",
-            ("Detail point with <<inline emphasis>> in the middle", 1),
-            "Another <<important point>> that drives the message",
-            ("CPRD contains <<>50 million patients>> and covers ~24%", 1),
-            "<<Multiple highlights>> can appear <<in one line>>",
-        ]
-    )
-
-    # Add conclusion slide
-    conclusion_slide = add_conclusion_slide(prs,
-        title="Conclusions",
-        subtitle="Summary of this presentation",
-        takeaways=[
-            "Zentiva branding is fully preserved",
-            "Multiple slide layouts are supported",
-            "Hierarchical bullet points with color styling",
-            "Text and image layouts available",
-            "Highlight slides with inline emphasis (v019)",
-            "Slide management (hide, reorder) implemented"
-        ]
-    )
-
-    # Remove unused template slides (slides 3-13)
-    # After this: 0=Title, 1=Quote, 2=Split, 3+=added slides
-    for i in range(13, 2, -1):
-        remove_slide(prs, i)
-
-    # Now reorder: Move Quote (1) and Split (2) to the end and hide them
-    # After removals: 0=Title, 1=Quote, 2=Split, 3=Content, 4=TwoCol, 5=TextImage, 6=Highlight, 7=Conclusion
-    # Move Quote (index 1) to end
-    move_slide_to_end(prs, 1)
-    # Now: 0=Title, 1=Split, 2=Content, 3=TwoCol, 4=TextImage, 5=Highlight, 6=Conclusion, 7=Quote
-    # Move Split (now index 1) to end
-    move_slide_to_end(prs, 1)
-    # Now: 0=Title, 1=Content, 2=TwoCol, 3=TextImage, 4=Highlight, 5=Conclusion, 6=Quote, 7=Split
-
-    # Hide the last two slides (Quote and Split)
-    hide_slide(prs, len(prs.slides) - 2)  # Quote
-    hide_slide(prs, len(prs.slides) - 1)  # Split
-
-    # Add slide numbers to all visible slides except title (index 0)
-    # Visible slides: 0=Title, 1=Content, 2=TwoCol, 3=TextImage, 4=Highlight, 5=Conclusion
-    # Hidden slides at end: 6=Quote, 7=Split
-    visible_count = len(prs.slides) - 2  # Exclude 2 hidden slides
-    total_numbered = visible_count - 1   # Exclude title slide from numbering
-    for i in range(1, visible_count):    # Skip title (0), stop before hidden
-        current = i  # Slide 1 = "1", Slide 2 = "2", etc.
-        add_slide_number(prs.slides[i], current, total_numbered)
-
-    prs.save(output_path)
-    print(f"[zentiva-prez-gen {VERSION}] Test presentation saved to {output_path}")
-    return output_path
+    text = open(path, encoding="utf-8").read()
+    meta, slides = {}, []
+    for block in _re.findall(r"```ya?ml\s*\n(.*?)```", text, _re.S):
+        data = yaml.safe_load(block) or {}
+        if isinstance(data, dict) and "type" in data:
+            slides.append(data)
+        elif isinstance(data, dict):
+            meta.update(data)
+    return meta, slides
 
 
 if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    assets_dir = os.path.join(script_dir, "..", "assets")
-    template = os.path.join(assets_dir, "Brand_v001.pptx")
+    import argparse
 
-    if len(sys.argv) < 2:
-        print(f"Zentiva Presentation Generator {VERSION}")
-        print("Usage: python generate_pptx.py --test [output_name]")
-        print("       python generate_pptx.py --version")
-        sys.exit(1)
-
-    if sys.argv[1] == "--version":
+    ap = argparse.ArgumentParser(description=f"Zentiva Presentation Generator {VERSION}")
+    ap.add_argument("--version", action="store_true")
+    ap.add_argument("--test", nargs="?", const="test_output", metavar="NAME",
+                    help="test deck with all slide types")
+    ap.add_argument("--from-markdown", nargs="+", metavar=("SPEC.md", "OUT.pptx"),
+                    help="markdown spec (```yaml blocks) → pptx")
+    ap.add_argument("--template", default=DEFAULT_TEMPLATE)
+    args = ap.parse_args()
+    if args.version:
         print(f"zentiva-prez-gen {VERSION}")
-        sys.exit(0)
-
-    if sys.argv[1] == "--test":
-        base_name = sys.argv[2] if len(sys.argv) > 2 else "test_output"
-        output_path = get_versioned_filename(base_name)
-        generate_test_presentation(output_path, template)
+    elif args.test:
+        generate_test_presentation(get_versioned_filename(args.test), args.template)
+    elif args.from_markdown:
+        meta, slides = load_markdown_spec(args.from_markdown[0])
+        out = args.from_markdown[1] if len(args.from_markdown) > 1 else \
+            get_versioned_filename(meta.get("output", "presentation"))
+        generate_presentation(out, args.template, slides)
+    else:
+        ap.print_help()

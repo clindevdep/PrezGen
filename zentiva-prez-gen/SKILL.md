@@ -1,193 +1,104 @@
 ---
 name: zentiva-prez-gen
-version: v019
-description: |
-  Generate Zentiva-branded PowerPoint presentations from markdown templates.
-  Uses the official Brand_v001.pptx template to preserve gradients, logos, and visual elements.
-
-  TRIGGERS - Use this skill when user says:
-  - "create Zentiva presentation" / "generate Zentiva slides" / "make Zentiva pptx"
-  - "create slides from markdown" / "convert md to pptx" / "presentation from template"
-  - Any request for Zentiva-branded presentations or slide decks
+version: v020
+description: "Generate Zentiva-branded PowerPoint presentations from markdown or Python specs (Brand_v002.pptx)."
 ---
 
-# Zentiva Presentation Generator (v019)
+# Zentiva Presentation Generator (v020)
 
-This skill enables you to create branded Zentiva presentations programmatically using Python and the `python-pptx` library.
+Generates Zentiva-branded PPTX decks with `python-pptx` from the official template **Brand_v002.pptx**
+(16 template slides, 24 layouts). Template slides are reused for the title, statement and split slides
+so gradients, photos and the logo stay intact; all other slides are added from the template layouts.
 
-## Quick Start
+## Project location
 
-```python
-from scripts.generate_pptx import generate_presentation
-
-slides = [
-    {'type': 'title', 'title': 'Q1 2026 Results'},
-    {'type': 'quote', 'title': 'Driving sustainable growth through innovation'},
-    {'type': 'content', 'title': 'Key Highlights', 'content': [
-        'Revenue up 15% YoY',
-        ('Market expansion in CEE', 1),
-        ('New product launches', 1),
-        'Operational efficiency gains'
-    ]},
-    {'type': 'two_column', 'title': 'Financial Overview',
-     'content': ['Revenue: $2.4B', 'EBITDA: $680M'],
-     'content2': ['Net Income: $340M', 'EPS: $1.42']}
-]
-
-generate_presentation('output.pptx', 'assets/Brand_v001.pptx', slides)
 ```
-
-## Supported Slide Types
-
-### 1. Title Slide (`type: 'title'`)
-Full-width background image with gradient overlay and centered white title. Includes automatic date display (YYYY-MMM-DD format) in bottom right.
-
-```python
-{'type': 'title', 'title': 'Presentation Title', 'subtitle': 'Optional Subtitle'}
+/home/clindevdep/AI/PrezGen/
+├── Templates/Brand_v002.pptx              # current template (Brand_v001 kept for old decks)
+├── Templates/presentation_template_v020.md
+└── zentiva-prez-gen/
+    ├── scripts/generate_pptx.py           # generator (VERSION = v020)
+    ├── assets/Brand_v002.pptx             # default template (copy)
+    ├── references/branding.md             # colours, fonts, layouts
+    └── verification/                      # rendered checks
 ```
+Run with uv: `cd /home/clindevdep/AI/PrezGen/zentiva-prez-gen && uv run python scripts/generate_pptx.py …`
 
-### 2. Quote/Statement Slide (`type: 'quote'`)
-Full gradient background (dark blue to teal) with centered white statement text.
-
-```python
-{'type': 'quote', 'title': 'Your impactful statement here'}
-```
-
-### 3. Content Slide (`type: 'content'`)
-Standard slide with title and hierarchical bullet points.
-
-```python
-{'type': 'content', 'title': 'Slide Title', 'content': [
-    'First level bullet',
-    ('Second level indented', 1),
-    'Back to first level'
-]}
-```
-
-### 4. Two-Column Slide (`type: 'two_column'`)
-Side-by-side content areas with decorative gradient circle on right.
-
-```python
-{'type': 'two_column', 'title': 'Comparison',
- 'content': ['Left item 1', 'Left item 2'],
- 'content2': ['Right item 1', 'Right item 2']}
-```
-
-### 5. Split Layout (`type: 'split'`)
-Left gradient panel with text, right side image.
-
-```python
-{'type': 'split', 'title': 'Section Title', 'subtitle': 'Description'}
-```
-
-### 6. Highlight Content Slide (`type: 'highlight'`) - NEW in v019
-Content slide with inline text highlighting. Key phrases are emphasized in teal color.
-Use `<<text>>` syntax to mark portions that should be highlighted.
-
-```python
-{'type': 'highlight', 'title': 'Key Benefits', 'content': [
-    '<<Primary advantage>> with supporting explanation',
-    ('Detail with <<emphasis>> in the middle', 1),
-    'Another point with <<multiple>> inline <<highlights>>',
-    ('Sub-point containing <<key data>> and context', 1)
-]}
-```
-
-**Highlight syntax:**
-- Wrap text in `<<` and `>>` to highlight in teal
-- Works at any bullet level
-- Multiple highlights per line supported
-- Level 0: Bold dark blue with teal highlights
-- Level 1+: Regular dark blue with teal highlights
-
-## Bullet Point Hierarchy
-
-Content supports nested bullets using tuples:
-
-```python
-content = [
-    'Level 0 bullet',           # First level (teal)
-    ('Level 1 bullet', 1),      # Indented with bullet
-    ('Level 2 bullet', 2),      # Further indented
-    'Back to level 0'
-]
-```
-
-## API Reference
-
-### `generate_presentation(output_path, template_path, slides_spec)`
-
-Generate a complete presentation from a list of slide specifications.
-
-**Parameters:**
-- `output_path` (str): Path to save the generated .pptx file
-- `template_path` (str): Path to Brand_v001.pptx template
-- `slides_spec` (list): List of slide dictionaries
-
-**Slide Dictionary Keys:**
-| Key | Type | Description |
-|-----|------|-------------|
-| `type` | str | 'title', 'quote', 'content', 'two_column', 'split', 'highlight' |
-| `title` | str | Main title or statement text |
-| `subtitle` | str | Secondary text (title/split slides) |
-| `content` | list | Bullet points for left/main content |
-| `content2` | list | Bullet points for right column (two_column only) |
-| `image` | str | Path to image file (title/split slides) |
-
-### `generate_test_presentation(output_path, template_path)`
-
-Generate a test presentation with all layout types for verification.
+## Quick start
 
 ```bash
-python scripts/generate_pptx.py --test output
-# Creates: output_v010.pptx
+cp /home/clindevdep/AI/PrezGen/Templates/presentation_template_v020.md my_deck.md   # edit the ```yaml blocks
+cd /home/clindevdep/AI/PrezGen/zentiva-prez-gen
+uv run python scripts/generate_pptx.py --from-markdown my_deck.md my_deck_v001.pptx
+uv run python scripts/generate_pptx.py --test verification/test_output             # all slide types
 ```
 
-### `get_versioned_filename(base_name, version=None)`
-
-Generate a versioned filename following the naming convention.
-
+Python API:
 ```python
-from scripts.generate_pptx import get_versioned_filename, VERSION
-print(get_versioned_filename("quarterly_report"))  # quarterly_report_v010.pptx
+import sys; sys.path.insert(0, "/home/clindevdep/AI/PrezGen/zentiva-prez-gen")
+from scripts.generate_pptx import generate_presentation
+generate_presentation("out.pptx", None, [            # None = assets/Brand_v002.pptx
+    {"type": "title", "title": "Tadalafil 20 mg FCT", "subtitle": "Feasibility"},
+    {"type": "content", "title": "Key findings", "subtitle": "Regulatory",
+     "content": ["EMA PSG: **fasting + fed**", ["Rev. 3, [PSG](https://www.ema.europa.eu/…)", 1]],
+     "sources": ["[EMA PSG Rev. 3](https://…)", "[EPAR Mylan](https://…)"]},
+    {"type": "table", "title": "CVw", "header": ["PK", "CVw", "N"], "rows": [["Cmax", "14.2%", "4"]]},
+])
 ```
+The deck follows the order of the spec list. Unused template slides are removed. Slide numbers
+("n / total") are added to every visible slide except the title.
 
-## Design Principles
+## Slide types
 
-The generator preserves Zentiva brand identity:
+| type | built from | fields |
+|---|---|---|
+| `title` | template slide 1 (photo + gradient), date added | title, subtitle, image, date |
+| `quote` | template slide 2 (gradient statement); further quotes → content slide | title |
+| `split` | template slide 3 (panel + photo) | title, subtitle, image |
+| `content` | layout `2_Title and Content` | title, subtitle, content |
+| `two_column` | layout `17_Title and Content` (right gradient circle) | title, content, content2 |
+| `highlight` | layout `25_Title and Content` (style of template slides 15–16) | title, content with `<<…>>` |
+| `text_image` | layout `12_Title and Content` (photo right) | title, subtitle, content, image |
+| `table` | layout `2_Title and Content` + table in the style of template slide 11 | title, subtitle, header, rows, col_widths, max_rows (default 12; longer tables continue on "(cont.)" slides) |
+| `conclusion` | layout `2_Title and Content` | title, subtitle, takeaways |
 
-- **Colors**: Dark Blue (#0C4160), Teal (#00A98F)
-- **Logo**: Automatically appears in footer (from template master)
-- **Gradients**: Visual elements preserved from template slides
-- **Typography**: Template fonts maintained
-- **Layout**: Clean, minimalist with ample white space
-- **Slide Numbers**: "current / total" format in dark blue, positioned at far right
-- **Date**: YYYY-MMM-DD format on title slide in white
+Every slide also takes `sources` (footnote line above the footer: `[label](url)`, text, or `[label, url]`)
+and `hidden: true`.
 
-## Resources
+Bullets: `"text"` = level 0 (blue, bold-ish 20 pt), `["text", 1]` = level 1 (green 16 pt), `["text", 2]` = 14 pt.
+Inline formatting in all text and table cells: `[label](https://…)` hyperlink, `**bold**`, `<<highlight>>` (teal).
 
-- **Template**: `assets/Brand_v001.pptx`
-- **Brand Guide**: `references/branding.md`
-- **Generator Script**: `scripts/generate_pptx.py`
-- **Verification**: `verification/` (PNG comparison infrastructure)
+## Brand (from the Brand_v002 theme and master)
 
-## Technical Notes
+| role | value |
+|---|---|
+| Titles, body text, table header | `#004876` (theme accent1) |
+| Subtitles, emphasis | `#00BD8E` (theme accent2) |
+| Master bullet colour | `#3EC89F` |
+| Footnotes | `#323232` (dk1) |
+| Fonts | Arial in the master text styles (theme minor/major: Calibri); tables in the template use Roboto |
+| Other theme accents | `#1C6DC3`, `#B9207B`, `#FC4C02`, `#FFCC00` (charts) |
+| Table style | Medium Style 2 – Accent 2 `{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}`, header row accent1 |
 
-### Why Template Modification?
+v019 and earlier used `#0C4160` / `#00A98F`, which are not in the template.
 
-The generator modifies existing template slides rather than creating new ones from layouts. This approach ensures:
+## Verification
 
-1. **Gradient preservation**: Background shapes and gradients are slide-specific, not layout properties
-2. **Visual fidelity**: All decorative elements (circles, accent shapes) are preserved
-3. **Brand consistency**: Master slide elements (logo, footer) automatically included
+```bash
+cd verification && libreoffice --headless --convert-to pdf deck.pptx && pdftoppm -png -r 60 deck.pdf deck
+```
+Look at the PNGs: no "Click to add text", nothing outside the slide, date inside the title photo.
 
-### Template Slide Mapping
+## Changes in v020 (2026-10-14)
+- Default template Brand_v002.pptx. v019 removed only the first 14 template slides, so the two RWE example
+  slides of Brand_v002 leaked into every deck; template slides are now removed by identity.
+- Deck order = spec order (v019 put reused template slides — e.g. a quote — always at positions 1–3).
+- All slide types available in `generate_presentation` (text_image and conclusion were test-only); new `table`,
+  `sources`, `hidden`; links / bold / highlight in all text.
+- Theme colours; title date moved inside the photo; images now inserted into picture placeholders
+  (v019 checked a class name that never matched); `--from-markdown` implemented (it was documented, not built).
 
-| Index | Type | Visual Elements |
-|-------|------|-----------------|
-| 0 | Title | Background image, gradient overlay |
-| 1 | Quote | Full gradient background |
-| 2 | Split | Left gradient panel, right image area |
-| 3+ | Various | Additional layouts (removed after use) |
-
-New content and two-column slides are added from layouts, while title/quote/split slides modify existing template slides to preserve their visual elements.
+## Troubleshooting
+- "Click to add text" visible → a placeholder was left: `hide_unused_placeholders(slide, keep_indices=[…])`.
+- Table too long → it continues on "(cont.)" slides (`max_rows`); keep cells short.
+- Old decks built on Brand_v001: pass the template explicitly (`--template …/Brand_v001.pptx`).

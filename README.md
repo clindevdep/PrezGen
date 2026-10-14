@@ -1,12 +1,12 @@
 # Zentiva Presentation Generator
 
-**Version:** v018
+**Version:** v020 (template Brand_v002.pptx; see zentiva-prez-gen/SKILL.md for the changes)
 
 Generate professional Zentiva-branded PowerPoint presentations programmatically using Python.
 
 ## Overview
 
-This project provides a skill for generating PPTX presentations that adhere to Zentiva corporate branding guidelines. It preserves visual elements (gradients, logos, colors) by modifying the official Brand_v001.pptx template directly.
+This project provides a skill for generating PPTX presentations that adhere to Zentiva corporate branding guidelines. It preserves visual elements (gradients, logos, colors) by modifying the official Brand_v002.pptx template directly.
 
 ## Features
 
